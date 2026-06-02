@@ -20,7 +20,7 @@ jobs:
 
       - name: Build wtfutil
         run: |
-          GOTOOLCHAIN=auto go build -o wtf .
+          GOTOOLCHAIN=auto go build -o wtf-binary .
 
       - name: Get commit info
         id: commit
@@ -31,7 +31,7 @@ jobs:
       - name: Create release archive
         run: |
           mkdir -p wtf-patched-${{ steps.commit.outputs.sha_short }}
-          cp wtf wtf-patched-${{ steps.commit.outputs.sha_short }}/
+          cp wtf-binary wtf-patched-${{ steps.commit.outputs.sha_short }}/wtf
           cp README.md wtf-patched-${{ steps.commit.outputs.sha_short }}/
           tar -czf wtf-patched-${{ steps.commit.outputs.sha_short }}.tar.gz wtf-patched-${{ steps.commit.outputs.sha_short }}/
 
