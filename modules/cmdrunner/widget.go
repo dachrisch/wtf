@@ -8,9 +8,12 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
+	"unicode"
 
 	"github.com/creack/pty"
 	"github.com/rivo/tview"
@@ -213,7 +216,7 @@ func (widget *Widget) content() (string, string, bool) {
 	if ansiTitle == defaultTitle {
 		ansiTitle = tview.TranslateANSI(tview.Escape(widget.String()))
 	}
-	ansiResult := tview.TranslateANSI(tview.Escape(result))
+	ansiResult := renderOSC8(result)
 
 	return ansiTitle, ansiResult, false
 }
@@ -223,4 +226,48 @@ func (widget *Widget) resetBuffer() {
 	defer widget.m.Unlock()
 
 	widget.buffer.Reset()
+}
+
+var osc8Re = regexp.MustCompile(`\x1b\]8;[^;]*;([^\x07\x1b]*)(?:\x07|\x1b\\)([\s\S]*?)\x1b\]8;;(?:\x07|\x1b\\)`)
+
+func renderOSC8(raw string) string {
+	type link struct {
+		uri  string
+		text string
+	}
+	var links []link
+
+	stripped := osc8Re.ReplaceAllStringFunc(raw, func(match string) string {
+		sub := osc8Re.FindStringSubmatch(match)
+		idx := len(links)
+		links = append(links, link{uri: sub[1], text: sub[2]})
+		return "\x00" + strconv.Itoa(idx) + "\x00"
+	})
+
+	out := tview.TranslateANSI(tview.Escape(stripped))
+
+	for i, l := range links {
+		placeholder := "\x00" + strconv.Itoa(i) + "\x00"
+		var replacement string
+		if validHyperlinkURI(l.uri) {
+			replacement = "[:::" + l.uri + "]" + tview.TranslateANSI(tview.Escape(l.text)) + "[:::-]"
+		} else {
+			replacement = tview.TranslateANSI(tview.Escape(l.text))
+		}
+		out = strings.Replace(out, placeholder, replacement, 1)
+	}
+
+	return out
+}
+
+func validHyperlinkURI(uri string) bool {
+	if uri == "" {
+		return false
+	}
+	for _, r := range uri {
+		if r < 0x20 || r > unicode.MaxASCII || r == '[' || r == ']' {
+			return false
+		}
+	}
+	return true
 }
